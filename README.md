@@ -13,6 +13,8 @@ order to provide a simple analysis containin:
 
 1. [Understanding the SecureCodeBox Architecture](#understanding-the-securecodebox-architecture)
 2. [Rust Security Tools Selection](#rust-security-tools-selection)
+3. [Usage](#usage)
+4. [Development](#development)
 
 ## Prerequisites
 
@@ -26,6 +28,11 @@ sudo mkdir -p /usr/local/lib/docker/cli-plugins
 # Create a symbolic link pointing to the buildx plugin location to allow Docker to find buildx regardless of which path it checks
 sudo ln -s /usr/lib/docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
 ```
+
+**Additional tools needed for development and testing:**
+
+- `jq` - for JSON processing in tests: `sudo apt-get install jq`
+- `git` - for cloning the repository
 
 ## Understanding the SecureCodeBox architecture
 
@@ -57,23 +64,25 @@ In my understanding, the workflow seems to be the following:
 └─$ tree -I 'target'
 .
 ├── examples
-├── helm
-│   └── templates
 ├── LICENSE
 ├── notes.md
 ├── parser
+│   ├── Dockerfile
+│   ├── package.json
+│   └── parser.js
 ├── README.md
 ├── scanner
-│   ├── Dockerfile
-│   └── scanner.sh
+│   ├── Dockerfile
+│   └── scanner.sh
 └── tests
-    └── vulnerable_crate
-        ├── Cargo.lock
-        ├── Cargo.toml
-        └── src
-            └── main.rs
-
-9 directories, 8 files
+    ├── fixtures
+    │   └── vulnerable_crate
+    │       ├── Cargo.lock
+    │       ├── Cargo.toml
+    │       └── src
+    │           └── main.rs
+    └── integration
+        └── test-full-integration.sh
 ```
 
 #### The scanner directory
@@ -111,3 +120,48 @@ For a minimal Rust security analysis, we imagined to integrate several tools:
    - Helps identify potential security risks
 
 (Nota Bene: At this stage, I'm not sure everything will be implemented for the end of the Hackathon...)
+
+## Usage
+
+### Running the Scanner
+
+To scan a Rust project for vulnerabilities:
+
+```bash
+# Build the scanner image
+docker build -t scb-rust-scan:dev ./scanner
+
+# Run the scanner on a Rust project (must contain Cargo.lock)
+docker run --rm -v /path/to/rust/project:/scan scb-rust-scan:dev
+```
+
+### Running the Complete Pipeline
+
+```bash
+# Build both images
+docker build -t scb-rust-scan:dev ./scanner
+docker build -t scb-rust-parser:dev ./parser
+
+# Run scanner and save output
+docker run --rm -v /path/to/rust/project:/scan scb-rust-scan:dev > scan-results.json
+
+# Parse the results
+docker run --rm -v $(pwd)/scan-results.json:/tmp/scan.json scb-rust-parser:dev /tmp/scan.json
+```
+
+## Development
+
+### Testing
+
+Run the integration test suite:
+
+```bash
+cd tests/integration
+./test-full-integration.sh
+```
+
+This will test:
+
+- Detection of known vulnerabilities
+- Handling of safe projects  
+- Graceful error handling for missing Cargo.lock

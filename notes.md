@@ -33,13 +33,38 @@ Ran the scanner against our vulnerable test crate and successfully detected RUST
 
 The scanner correctly identified that time 0.1.45 has a known vulnerability where environment variables are set without synchronization, potentially causing segfaults in multithreaded programs. This proves our scanner is working!
 
-## Next Steps
+### Step 5 - Scanner Exit Code Issue and Resolution
 
-### Immediate tasks
+Discovered that cargo-audit returns exit code 1 when vulnerabilities are found, which our script initially treated as an error:
 
-1. Create the parser to transform cargo-audit JSON into SecureCodeBox findings format
-2. Test with more complex projects (multiple vulnerabilities, no vulnerabilities)
-3. Add error handling for projects without Cargo.lock
+- **Problem**: Scanner reported "failed" when it actually found vulnerabilities successfully
+- **Root cause**: cargo-audit uses exit code 1 to indicate "vulnerabilities found" (not an error!)
+- **Solution**: Modified scanner.sh to treat exit codes 0 and 1 as success, only 2+ as actual errors
+
+Also addressed the home directory issue:
+
+- **Problem**: System user had HOME=/nonexistent
+- **Workaround**: Set HOME=/tmp/scanner-home in script
+- **Better fix**: Changed Dockerfile to use `useradd -m` instead of `adduser --system`
+
+### Step 6 - Parser Implementation
+
+Created Node.js parser to transform cargo-audit JSON into SecureCodeBox findings:
+
+- **Extracts**: RUSTSEC IDs, CVE numbers, CVSS scores, affected versions
+- **Calculates**: Severity from CVSS data (HIGH if A:H, C:H, or I:H)
+- **Preserves**: Full descriptions, remediation advice, and metadata
+- **Output**: SecureCodeBox-compatible finding format
+
+### Step 7 - Integration Testing
+
+Built comprehensive test suite (test-full-integration.sh):
+
+- **Test 1**: Vulnerable project - correctly detects time crate vulnerability
+- **Test 2**: Safe project - reports zero vulnerabilities
+- **Test 3**: Missing Cargo.lock - handles gracefully with warning
+
+All tests passed! The complete pipeline works end-to-end.
 
 ### Future enhancements
 
@@ -67,6 +92,16 @@ Learned about transitive dependency requirements:
 - Using `--locked` flag prevents pulling newer incompatible versions
 - Upgrading to Rust 1.87 provided sufficient headroom
 
+### Understanding cargo-audit Exit Codes
+
+Key learning: cargo-audit uses exit codes to communicate results, not just success/failure:
+
+- Exit code 0: No vulnerabilities found
+- Exit code 1: Vulnerabilities found (this is a SUCCESS case!)
+- Exit code 2+: Actual errors
+
+This is similar to grep - exit code 1 means "no matches" which is still a successful run.
+
 ## Ideas
 
 - Consider caching cargo-audit installation in a separate build stage to speed up builds
@@ -84,6 +119,15 @@ Build the scanner:
 
 Run a scan:
 `docker run --rm -v "$(pwd)/tests/vulnerable_crate":/scan scb-rust-scan:dev > scan-output.json`
+
+Build the parser:
+`docker build -t scb-rust-parser:dev ./parser`
+
+Parse results:
+`docker run --rm -v "$(pwd)/scan-output.json":/tmp/scan.json scb-rust-parser:dev /tmp/scan.json`
+
+Run integration tests:
+`cd tests/integration && ./test-full-integration.sh`
 
 ## Links
 

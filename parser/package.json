@@ -1,0 +1,14 @@
+{
+  "name": "rust-scan-parser",
+  "version": "1.0.0",
+  "description": "SecureCodeBox parser for Rust security scanner",
+  "main": "parser.js",
+  "scripts": {
+    "parse": "node parser.js"
+  },
+  "author": "",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
