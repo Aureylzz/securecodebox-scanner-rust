@@ -14,7 +14,22 @@ order to provide a simple analysis containin:
 1. [Understanding the SecureCodeBox Architecture](#understanding-the-securecodebox-architecture)
 2. [Rust Security Tools Selection](#rust-security-tools-selection)
 
+## Prerequisites
+
+**Having Docker installed and able to run.**  
+If you have a deprecation warning, during the build, about buildx, run the following commands:
+
+```bash
+# Create the directory structure where Docker expects to find CLI plugins
+sudo mkdir -p /usr/local/lib/docker/cli-plugins
+
+# Create a symbolic link pointing to the buildx plugin location to allow Docker to find buildx regardless of which path it checks
+sudo ln -s /usr/lib/docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
+```
+
 ## Understanding the SecureCodeBox architecture
+
+### SecureCodeBox functionning
 
 Before implementing the scanner, we need to understand how SecureCodeBox works...
 
@@ -35,11 +50,47 @@ In my understanding, the workflow seems to be the following:
 5. Parser transforms results
 6. Findings stored
 
+### Repository structure
+
+```bash
+┌──(aureylz㉿aureylzwin)-[~/securecodebox-scanner-rust]
+└─$ tree -I 'target'
+.
+├── examples
+├── helm
+│   └── templates
+├── LICENSE
+├── notes.md
+├── parser
+├── README.md
+├── scanner
+│   ├── Dockerfile
+│   └── scanner.sh
+└── tests
+    └── vulnerable_crate
+        ├── Cargo.lock
+        ├── Cargo.toml
+        └── src
+            └── main.rs
+
+9 directories, 8 files
+```
+
+#### The scanner directory
+
+It will contain the Docker image that will run the Rust security tools. This is where the work begins because it's the heart of the scanner. Without it, there's nothing to parse or deploy...
+
+#### The parser directory
+
+It will transform the raw tool output into SecureCodeBox's finding format. It's a kind of adapter between what Rust tools say and what SecureCodeBox understands.
+
+#### The helm directory
+
+As I said, it's kinda mystical now, but it's simply a package manager for Kubernetes. It tells SecureCodeBox "here's how to run my scanner" in a standardized way.
+
 ## Rust Security Tools Selection
 
 For a minimal Rust security analysis, we imagined to integrate several tools:
-
-### Primary Tools
 
 1. **cargo-audit:** A vulnerability scanner for dependencies
    - Checks Cargo.lock against RustSec Advisory Database
