@@ -16,10 +16,12 @@ Before running tests, ensure you have:
 
 1. Docker installed and running
 2. Built the scanner and parser images:
+
    ```bash
    docker build -t scb-rust-scan:dev ./scanner
    docker build -t scb-rust-parser:dev ./parser
    ```
+
 3. `jq` installed for JSON processing: `sudo apt-get install jq`
 
 ### Full Integration Test
@@ -39,9 +41,10 @@ This test suite verifies:
 
 ### Understanding the Test Project
 
-The `fixtures/vulnerable_crate` directory contains a minimal Rust project that depends on time crate version 0.1.45. This version has a known vulnerability (RUSTSEC-2020-0071) that causes potential segfaults in multithreaded programs. 
+The `fixtures/vulnerable_crate` directory contains a minimal Rust project that depends on time crate version 0.1.45. This version has a known vulnerability (RUSTSEC-2020-0071) that causes potential segfaults in multithreaded programs.
 
 This vulnerability was chosen because:
+
 - It's a real security issue, not a contrived example
 - It's reliably detected by cargo-audit
 - It demonstrates the scanner's ability to identify transitive dependencies with vulnerabilities
@@ -96,11 +99,13 @@ cargo generate-lockfile
 You can also run individual components manually for debugging:
 
 ### Test Scanner Only
+
 ```bash
 docker run --rm -v "$(pwd)/fixtures/vulnerable_crate":/scan scb-rust-scan:dev
 ```
 
 ### Test Parser Only
+
 ```bash
 # First run scanner and save output
 docker run --rm -v "$(pwd)/fixtures/vulnerable_crate":/scan scb-rust-scan:dev > scan-output.json
@@ -112,6 +117,7 @@ docker run --rm -v "$(pwd)/scan-output.json":/tmp/scan.json scb-rust-parser:dev 
 ## Continuous Integration
 
 These tests are designed to be run in CI/CD pipelines. The integration test script returns appropriate exit codes:
+
 - 0: All tests passed
 - 1: One or more tests failed
 

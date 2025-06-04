@@ -1,0 +1,19 @@
+apiVersion: execution.securecodebox.io/v1
+kind: ParseDefinition
+metadata:
+  name: json
+  namespace: default
+spec:
+  image: docker.io/library/scb-rust-parser:dev
+  imagePullPolicy: Never
+  contentType: Text
+  env:
+    - name: SCAN_RESULTS_FILE
+      value: /home/securecodebox/scan-results.json
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi

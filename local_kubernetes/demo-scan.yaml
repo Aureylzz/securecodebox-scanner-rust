@@ -1,0 +1,45 @@
+# This file defines a SecureCodeBox Scan resource that triggers vulnerability scanning
+# When applied to Kubernetes, it tells SecureCodeBox to run our Rust scanner on a test project
+apiVersion: execution.securecodebox.io/v1
+kind: Scan
+metadata:
+  # The scan name becomes part of all job names that SecureCodeBox creates
+  # For example, this will create jobs like "scan-rust-security-demo-xxxxx"
+  name: rust-security-demo
+spec:
+  # This must match the name of a registered ScanType in your cluster
+  # We installed this ScanType when we ran "helm install rust-scanner ./helm"
+  scanType: rust-scanner
+  
+  # Volumes define data sources that will be available to the scanner
+  # Think of volumes as "virtual hard drives" that can be mounted into containers
+  volumes:
+    # We're using a ConfigMap as our data source
+    # A ConfigMap is a Kubernetes way to store configuration data or small files
+    - name: scan-target
+      configMap:
+        # This ConfigMap was created in Step 7 and contains our test Rust project
+        # It has three files: Cargo.toml, Cargo.lock, and main.rs
+        name: vulnerable-rust-project
+  
+  # Volume mounts specify WHERE to place the volume data inside the scanner container
+  # These mounts recreate the directory structure that cargo-audit expects
+  volumeMounts:
+    # Mount Cargo.toml at the root of the scan directory
+    # subPath extracts just this one file from the ConfigMap
+    - name: scan-target
+      mountPath: /scan/Cargo.toml
+      subPath: Cargo.toml
+    
+    # Mount Cargo.lock which contains the exact dependency versions
+    # This is the file cargo-audit analyzes to find vulnerabilities
+    - name: scan-target
+      mountPath: /scan/Cargo.lock
+      subPath: Cargo.lock
+    
+    # Mount the source code in the expected src/ directory structure
+    # cargo-audit doesn't analyze source code, but having the complete
+    # project structure prevents any tools from complaining about missing files
+    - name: scan-target
+      mountPath: /scan/src/main.rs
+      subPath: main.rs

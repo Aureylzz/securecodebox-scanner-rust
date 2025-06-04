@@ -1,0 +1,36 @@
+# This values file overrides the default Helm chart values for local testing
+# It tells Kubernetes to use our locally-built Docker images instead of trying
+# to pull images from a remote registry like Docker Hub
+
+scanner:
+  image:
+    # The repository includes the full path to the image
+    # docker.io/library/ is the default prefix for local Docker images in kind
+    # This matches what we saw when we ran: docker exec -it scb-demo-control-plane crictl images
+    repository: docker.io/library/scb-rust-scan
+    
+    # The tag identifies which version of the image to use
+    # We built our images with the "latest" tag in Step 1
+    tag: latest
+    
+    # pullPolicy controls when Kubernetes tries to download images
+    # "Never" means use only local images - perfect for our kind cluster
+    # Other options:
+    # - "Always": Always try to pull from registry (fails in our local setup)
+    # - "IfNotPresent": Pull only if image doesn't exist locally
+    pullPolicy: Never
+
+parser:
+  image:
+    # Same configuration pattern for the parser image
+    # Note: both images use the same repository prefix because they're both
+    # local images that we loaded into kind with "kind load docker-image"
+    repository: docker.io/library/scb-rust-parser
+    
+    # Using the same tag keeps our scanner and parser versions in sync
+    tag: latest
+    
+    # Same pullPolicy ensures we use our local image
+    # This is crucial - without "Never", Kubernetes would try to pull
+    # from Docker Hub and fail because these images don't exist there
+    pullPolicy: Never
