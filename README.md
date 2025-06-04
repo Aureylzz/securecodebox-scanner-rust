@@ -1,13 +1,18 @@
 # SecureCodeBox Rust security scanner
 
+A security scanner for [SecureCodeBox](https://www.securecodebox.io/) that detects vulnerabilities in Rust projects by analyzing their dependencies against the [RustSec Advisory Database](https://rustsec.org/).
+
 ## Project overview
 
-This project implements a personnal scanner for SecureCodeBox that analyzes Rust code for security issues. It will integrate several Rust tools in
-order to provide a simple analysis containin:
+This scanner integrates cargo-audit into SecureCodeBox, enabling automated security scanning of Rust projects in our CI/CD pipeline. It identifies known vulnerabilities in dependencies and provides actionable remediation advice.
 
-- Dependency vulnerabilities analysis
-- Code quality issues analysis
-- Potential security flaws.
+### Key Features
+
+- Detects security vulnerabilities in Rust dependencies
+- Transforms findings into SecureCodeBox's standardized format
+- Fully containerized for consistent execution
+- Easy integration via Helm chart
+- Runs with proper security isolation (non-root users)
 
 ## Table of contents
 
@@ -15,13 +20,18 @@ order to provide a simple analysis containin:
 2. [Rust Security Tools Selection](#rust-security-tools-selection)
 3. [Usage](#usage)
 4. [Development](#development)
+5. [Docker Images](#docker-images)
+6. [SecureCodeBox Integration](#securecodebox-integration)
 
 ## Prerequisites
 
-**Having Docker installed and able to run.**  
-If you have a deprecation warning, during the build, about buildx, run the following commands:
+**For running the scanner:**
+
+- Docker installed and running
 
 ```bash
+# If you have a deprecation warning, during the build, about buildx, run the following commands:
+
 # Create the directory structure where Docker expects to find CLI plugins
 sudo mkdir -p /usr/local/lib/docker/cli-plugins
 
@@ -29,139 +39,208 @@ sudo mkdir -p /usr/local/lib/docker/cli-plugins
 sudo ln -s /usr/lib/docker/cli-plugins/docker-buildx /usr/local/lib/docker/cli-plugins/docker-buildx
 ```
 
-**Additional tools needed for development and testing:**
+**For SecureCodeBox deployment:**
+
+- Kubernetes cluster
+- Helm
+- SecureCodeBox operator installed
+
+**For development:**
 
 - `jq` - for JSON processing in tests: `sudo apt-get install jq`
 - `git` - for cloning the repository
 
 ## Understanding the SecureCodeBox architecture
 
-### SecureCodeBox functionning
+### SecureCodeBox Components
 
-Before implementing the scanner, we need to understand how SecureCodeBox works...
+SecureCodeBox orchestrates security scanners through these components:
 
-It's divided into 5 core components:
+1. **Scanner Container**: Runs cargo-audit to detect vulnerabilities
+2. **Lurker Sidecar**: Captures scanner output automatically
+3. **Parser Container**: Transforms cargo-audit JSON into SecureCodeBox findings
+4. **Helm Chart**: Defines deployment configuration
+5. **ScanType CRD**: Tells SecureCodeBox how to execute scans
 
-1. **Scanner Container**: Run the security tool (in our case, it will be a Rust security tool)
-2. **Lurker Sidecar**: Capture the scanner output and store it in a kind of S3 local storage
-3. **Parser Container**: Transform the raw scanner output into SecureCodeBox's standardized format
-4. **Helm Chart**: Define the scanner configuration and deployment specifications (at the moment, it's the most mystic part for me...)
-5. **ScanType CRD**: Custom Resource Definition that tells SecureCodeBox how to run the scanner
+### Workflow
 
-In my understanding, the workflow seems to be the following:
-
-1. User creates Scan CR
-2. Operator creates Scanner Job
-3. Scanner runs
-4. Lurker captures output
-5. Parser transforms results
-6. Findings stored
+1. User creates a Scan custom resource
+2. SecureCodeBox creates a Job with scanner + lurker containers  
+3. Scanner analyzes Rust project and outputs JSON
+4. Lurker captures the results
+5. Parser transforms to SecureCodeBox format
+6. Findings are stored and displayed
 
 ### Repository structure
 
-```bash
-┌──(aureylz㉿aureylzwin)-[~/securecodebox-scanner-rust]
-└─$ tree -I 'target'
-.
-├── examples
-├── LICENSE
-├── notes.md
-├── parser
-│   ├── Dockerfile
-│   ├── package.json
-│   └── parser.js
-├── README.md
-├── scanner
-│   ├── Dockerfile
-│   └── scanner.sh
-└── tests
-    ├── fixtures
-    │   └── vulnerable_crate
-    │       ├── Cargo.lock
-    │       ├── Cargo.toml
-    │       └── src
-    │           └── main.rs
-    └── integration
-        └── test-full-integration.sh
 ```
-
-#### The scanner directory
-
-It will contain the Docker image that will run the Rust security tools. This is where the work begins because it's the heart of the scanner. Without it, there's nothing to parse or deploy...
-
-#### The parser directory
-
-It will transform the raw tool output into SecureCodeBox's finding format. It's a kind of adapter between what Rust tools say and what SecureCodeBox understands.
-
-#### The helm directory
-
-As I said, it's kinda mystical now, but it's simply a package manager for Kubernetes. It tells SecureCodeBox "here's how to run my scanner" in a standardized way.
+securecodebox-scanner-rust/
+├── scanner/          # Scanner container that runs cargo-audit
+├── parser/           # Parser container that transforms results
+├── helm/            # Helm chart for SecureCodeBox deployment
+├── tests/           # Integration tests and fixtures
+└── examples/        # Example usage (coming soon)
+```
 
 ## Rust Security Tools Selection
 
-For a minimal Rust security analysis, we imagined to integrate several tools:
+Currently implemented:
 
-1. **cargo-audit:** A vulnerability scanner for dependencies
+1. **cargo-audit**: Vulnerability scanner for dependencies
    - Checks Cargo.lock against RustSec Advisory Database
-   - Identifies known security vulnerabilities in dependencies
+   - Identifies known CVEs and security advisories
 
-2. **cargo-deny:** Supply chain security
-   - Checks for security advisories
-   - License compliance
-   - Duplicate dependencies
-   - Banned dependencies
+Future enhancements planned:
 
-3. **clippy:** Rust linter with security-focused lints
-   - Detects common mistakes and anti-patterns
-   - Includes security-relevant checks
-
-4. **cargo-geiger:** Unsafe code detection
-   - Counts unsafe code usage
-   - Helps identify potential security risks
-
-(Nota Bene: At this stage, I'm not sure everything will be implemented for the end of the Hackathon...)
+- cargo-deny: Supply chain security and license compliance
+- clippy: Security-focused lints
+- cargo-geiger: Unsafe code detection
 
 ## Usage
 
-### Running the Scanner
+### Quick Demo
 
-To scan a Rust project for vulnerabilities:
+Run the scanner on a Rust project with known vulnerabilities:
 
 ```bash
-# Build the scanner image
-docker build -t scb-rust-scan:dev ./scanner
-
-# Run the scanner on a Rust project (must contain Cargo.lock)
-docker run --rm -v /path/to/rust/project:/scan scb-rust-scan:dev
+# Clone and test with the vulnerable example
+docker run --rm -v "$(pwd)/tests/fixtures/vulnerable_crate":/scan \
+  aureylz/scb-rust-scan:latest
 ```
 
 ### Running the Complete Pipeline
 
 ```bash
-# Build both images
-docker build -t scb-rust-scan:dev ./scanner
-docker build -t scb-rust-parser:dev ./parser
+# 1. Scan a Rust project (must contain Cargo.lock)
+docker run --rm -v /path/to/rust/project:/scan \
+  aureylz/scb-rust-scan:latest > scan-results.json
 
-# Run scanner and save output
-docker run --rm -v /path/to/rust/project:/scan scb-rust-scan:dev > scan-results.json
+# 2. Parse results into SecureCodeBox format
+docker run --rm -v $(pwd)/scan-results.json:/tmp/scan.json \
+  -e SCAN_RESULTS_FILE=/tmp/scan.json \
+  aureylz/scb-rust-parser:latest
+```
 
-# Parse the results
-docker run --rm -v $(pwd)/scan-results.json:/tmp/scan.json scb-rust-parser:dev /tmp/scan.json
+### Example Output
+
+The scanner detects vulnerabilities like RUSTSEC-2020-0071:
+
+```json
+  {
+    "name": "RUSTSEC-2020-0071: Potential segfault in the time crate",
+    "description": "Bla bla bla",
+    "category": "Vulnerable Dependency",
+    "severity": "HIGH",
+    "osi_layer": "APPLICATION",
+    "attributes": {
+      "rustsec_id": "RUSTSEC-2020-0071",
+      "package": "time",
+      "affected_versions": ">=0.2.23",
+      "installed_version": "0.1.45",
+      "date": "2020-11-18",
+      "url": "https://github.com/time-rs/time/issues/293",
+      "cve": "CVE-2020-26235",
+      "cvss": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "categories": "code-execution, memory-corruption",
+      "keywords": "segfault",
+      "patched_versions": ">=0.2.23",
+      "unaffected_versions": "=0.2.0, =0.2.1, =0.2.2, =0.2.3, =0.2.4, =0.2.5, =0.2.6"
+    },
+    "location": "time@0.1.45"
+  }
 ```
 
 ## Development
 
-### Testing
-
-Run the integration test suite:
+### Building Images
 
 ```bash
+# Build scanner
+docker build -t scb-rust-scan:dev ./scanner
+
+# Build parser  
+docker build -t scb-rust-parser:dev ./parser
+```
+
+### Running Tests
+
+```bash
+# Run integration test suite
 cd tests/integration
 ./test-full-integration.sh
 ```
 
-This will test:
+The test suite verifies:
 
 - Detection of known vulnerabilities
-- Handling of safe projects  
-- Graceful error handling for missing Cargo.lock
+- Handling of safe projects
+- Graceful error handling
+
+### Project Structure Details
+
+- `scanner/scanner.sh`: Bash script that runs cargo-audit and handles results
+- `parser/parser.js`: Node.js script that transforms findings
+- `helm/`: Complete Helm chart for SecureCodeBox deployment
+- `tests/fixtures/vulnerable_crate`: Test project with known vulnerability
+
+## Docker Images
+
+Official images are available on Docker Hub:
+
+- Scanner: `aureylz/scb-rust-scan:latest`
+- Parser: `aureylz/scb-rust-parser:latest`
+
+Versioned tags are also available (e.g., `v0.1.1`, `v0.1.2`).
+
+## SecureCodeBox Integration
+
+### Installing the Scanner
+
+```bash
+# Install via Helm
+helm install rust-scanner ./helm
+
+# Verify installation
+kubectl get scantypes
+kubectl get parsedefinitions
+```
+
+### Running a Scan in SecureCodeBox
+
+```yaml
+apiVersion: "execution.securecodebox.io/v1"
+kind: Scan
+metadata:
+  name: rust-project-scan
+spec:
+  scanType: rust-scan
+  volumes:
+    - name: project-code
+      hostPath:
+        path: /path/to/rust/project
+  volumeMounts:
+    - name: project-code
+      mountPath: /scan
+```
+
+### Configuration Options
+
+The Helm chart supports various configuration options in `values.yaml`:
+
+- Scanner/parser image versions
+- Resource limits
+- Scan timeout
+- Environment variables
+
+## Contributing
+
+Contributions are welcome! Areas for improvement:
+
+- Add support for cargo-deny, clippy, cargo-geiger
+- Implement severity filtering options
+- Add support for private registries
+- Improve error messages and logging
+
+## License
+
+This project is licensed under the Apache License 2.0 - see the LICENSE file for details.

@@ -4,7 +4,10 @@
 # Function to output valid JSON even in error cases
 output_error_json() {
     local error_message="$1"
-    cat <<EOF
+    # When running in SecureCodeBox, write to the expected location
+    local output_file="${RESULTS_FILE:-/home/securecodebox/scan-results.json}"
+    
+    cat > "$output_file" <<EOF
 {
     "vulnerabilities": {
         "found": false,
@@ -17,6 +20,7 @@ output_error_json() {
     }]
 }
 EOF
+    log "Error JSON written to $output_file"
 }
 
 # Diagnostic output goes to stderr to keep stdout clean for JSON
@@ -25,6 +29,10 @@ log() {
 }
 
 log "Starting Rust security scan..."
+
+# Determine output location - SecureCodeBox sets this, otherwise use stdout
+RESULTS_FILE="${RESULTS_FILE:-/home/securecodebox/scan-results.json}"
+log "Results will be written to: $RESULTS_FILE"
 
 # Work around the /nonexistent home directory issue
 # Set HOME to a writable location
@@ -55,7 +63,6 @@ if [ -f "Cargo.lock" ]; then
     TEMP_ERRORS=$(mktemp)
     
     # Run cargo-audit and capture the exit code
-    # Important: Don't use the if statement here, just run and check code after
     timeout 300 cargo audit --json > "$TEMP_OUTPUT" 2> "$TEMP_ERRORS"
     exit_code=$?
     
@@ -76,9 +83,14 @@ if [ -f "Cargo.lock" ]; then
         
         # Check if we got valid JSON output
         if [ -s "$TEMP_OUTPUT" ]; then
-            # Output the JSON
-            cat "$TEMP_OUTPUT"
-            log "JSON output size: $(stat -c%s "$TEMP_OUTPUT") bytes"
+            # Write to the expected location for SecureCodeBox
+            cp "$TEMP_OUTPUT" "$RESULTS_FILE"
+            log "JSON output written to $RESULTS_FILE ($(stat -c%s "$TEMP_OUTPUT") bytes)"
+            
+            # Also output to stdout for manual testing
+            if [ "$RESULTS_FILE" != "/dev/stdout" ]; then
+                cat "$TEMP_OUTPUT"
+            fi
         else
             log "WARNING: No JSON output from cargo-audit"
             log "Stderr output:"

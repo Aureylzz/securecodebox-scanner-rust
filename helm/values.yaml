@@ -1,0 +1,49 @@
+# Default values for rust-scan
+
+# Scanner image configuration
+scanner:
+  image:
+    repository: aureylz/scb-rust-scan
+    tag: latest
+    pullPolicy: IfNotPresent
+  
+  # Resource limits for the scanner pod
+  resources:
+    limits:
+      memory: "512Mi"
+      cpu: "1000m"
+    requests:
+      memory: "256Mi"
+      cpu: "250m"
+  
+  # Timeout for scan execution (in seconds)
+  timeout: 300
+
+# Parser image configuration  
+parser:
+  image:
+    repository: aureylz/scb-rust-parser
+    tag: v0.1.2  # Changed from 'latest'
+    pullPolicy: IfNotPresent
+  
+  resources:
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+
+# Additional scanner settings
+scannerJob:
+  # Environment variables passed to scanner
+  env: []
+  
+  # Suspend job after completion
+  suspend: false
+  
+  # Number of retries on failure
+  backoffLimit: 3
+  
+  # TTL after job finishes (seconds)
+  ttlSecondsAfterFinished: null

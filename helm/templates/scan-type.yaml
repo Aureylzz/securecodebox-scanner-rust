@@ -1,0 +1,39 @@
+apiVersion: "execution.securecodebox.io/v1"
+kind: ScanType
+metadata:
+  name: {{ include "rust-scan.fullname" . }}
+  labels:
+    {{- include "rust-scan.labels" . | nindent 4 }}
+spec:
+  extractResults:
+    # Results are in JSON format
+    type: json
+    # Location where scanner writes results (managed by lurker)
+    location: "/home/securecodebox/scan-results.json"
+  
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: rust-scan
+              image: "{{ .Values.scanner.image.repository }}:{{ .Values.scanner.image.tag }}"
+              imagePullPolicy: {{ .Values.scanner.image.pullPolicy }}
+              command:
+                - /usr/local/bin/scanner.sh
+              resources:
+                {{- toYaml .Values.scanner.resources | nindent 16 }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                runAsNonRoot: true
+                runAsUser: 1000
+              env:
+                {{- toYaml .Values.scannerJob.env | nindent 16 }}
+              volumeMounts:
+                - name: scan-workspace
+                  mountPath: /scan
+          volumes:
+            - name: scan-workspace
+              emptyDir: {}

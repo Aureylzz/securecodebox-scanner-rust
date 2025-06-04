@@ -80,7 +80,7 @@ echo "Scanner: ✓ Successfully detects vulnerabilities"
 echo "Parser: ✓ Successfully transforms findings"
 echo "Pipeline: ✓ Complete data flow working correctly"
 echo
-echo "Your Rust security scanner is ready for SecureCodeBox integration!"
+echo "The Rust security scanner is ready for SecureCodeBox integration!"
 
 # Cleanup
 rm -rf tests/fixtures/safe_project tests/fixtures/no_lock_project

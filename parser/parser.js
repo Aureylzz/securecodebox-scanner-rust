@@ -2,13 +2,16 @@
 
 const fs = require('fs');
 
-// Parse command line arguments
-const scanResultsFile = process.argv[2];
+// Parse command line arguments OR use environment variable
+const scanResultsFile = process.argv[2] || process.env.SCAN_RESULTS_FILE;
 
 if (!scanResultsFile) {
     console.error('Usage: parser.js <scan-results-file>');
+    console.error('Or set SCAN_RESULTS_FILE environment variable');
     process.exit(1);
 }
+
+console.error(`INFO: Processing scan results from: ${scanResultsFile}`);
 
 // Read and parse the cargo-audit JSON output
 let scanResults;
@@ -19,7 +22,9 @@ try {
     console.error(`DEBUG: Successfully parsed JSON`);
 } catch (error) {
     console.error(`Error reading scan results: ${error.message}`);
-    process.exit(1);
+    // Output empty findings array for SecureCodeBox
+    console.log(JSON.stringify([]));
+    process.exit(0); // Exit successfully even if parsing fails
 }
 
 // Transform cargo-audit findings to SecureCodeBox format
@@ -28,9 +33,6 @@ const findings = [];
 console.error(`DEBUG: Checking for vulnerabilities...`);
 console.error(`DEBUG: scanResults.vulnerabilities exists: ${!!scanResults.vulnerabilities}`);
 console.error(`DEBUG: scanResults.vulnerabilities.count: ${scanResults.vulnerabilities?.count}`);
-console.error(`DEBUG: scanResults.vulnerabilities.list exists: ${!!scanResults.vulnerabilities?.list}`);
-console.error(`DEBUG: scanResults.vulnerabilities.list is array: ${Array.isArray(scanResults.vulnerabilities?.list)}`);
-console.error(`DEBUG: scanResults.vulnerabilities.list length: ${scanResults.vulnerabilities?.list?.length}`);
 
 // Check if we have vulnerabilities in the scan results
 if (scanResults.vulnerabilities && scanResults.vulnerabilities.list && Array.isArray(scanResults.vulnerabilities.list)) {
@@ -38,8 +40,6 @@ if (scanResults.vulnerabilities && scanResults.vulnerabilities.list && Array.isA
     
     scanResults.vulnerabilities.list.forEach((vuln, index) => {
         console.error(`DEBUG: Processing vulnerability ${index + 1}`);
-        console.error(`DEBUG: vuln.advisory exists: ${!!vuln.advisory}`);
-        console.error(`DEBUG: vuln.package exists: ${!!vuln.package}`);
         
         // Extract the advisory information
         const advisory = vuln.advisory;
@@ -50,15 +50,12 @@ if (scanResults.vulnerabilities && scanResults.vulnerabilities.list && Array.isA
         
         console.error(`DEBUG: Advisory ID: ${advisory.id}`);
         console.error(`DEBUG: Advisory title: ${advisory.title}`);
-        console.error(`DEBUG: Advisory CVSS: ${advisory.cvss}`);
         
         // Determine severity from CVSS score
         let severity = 'MEDIUM'; // Default severity
         if (advisory.cvss) {
-            console.error(`DEBUG: Parsing CVSS: ${advisory.cvss}`);
             // CVSS format: "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
-            // We need to calculate the score from these values or look for a score
-            // For now, let's use a simple mapping based on the impact values
+            // Check for High impact values
             if (advisory.cvss.includes('/A:H') || advisory.cvss.includes('/C:H') || advisory.cvss.includes('/I:H')) {
                 severity = 'HIGH';
             } else if (advisory.cvss.includes('/A:L') || advisory.cvss.includes('/C:L') || advisory.cvss.includes('/I:L')) {
@@ -106,33 +103,42 @@ if (scanResults.vulnerabilities && scanResults.vulnerabilities.list && Array.isA
 }
 
 // Handle warnings as separate findings (if any)
-if (scanResults.warnings) {
-    console.error(`DEBUG: Processing warnings...`);
-    // In cargo-audit output, warnings might be an object or array
-    // Let's handle both cases
-    if (Array.isArray(scanResults.warnings)) {
-        console.error(`DEBUG: Warnings is array with ${scanResults.warnings.length} items`);
-        scanResults.warnings.forEach((warning) => {
-            const finding = {
-                name: 'Cargo Audit Warning',
-                description: warning.message || warning,
-                category: 'Security Warning',
-                severity: 'LOW',
-                osi_layer: 'APPLICATION',
-                attributes: {
-                    warning_type: warning.kind || 'general'
-                }
-            };
-            findings.push(finding);
-        });
-    } else if (typeof scanResults.warnings === 'object') {
-        console.error(`DEBUG: Warnings is object`);
-        // Warnings might be an empty object or have properties
-        // For now, we'll skip empty warning objects
-    }
+if (scanResults.warnings && Array.isArray(scanResults.warnings)) {
+    console.error(`DEBUG: Processing ${scanResults.warnings.length} warnings`);
+    scanResults.warnings.forEach((warning) => {
+        const finding = {
+            name: 'Cargo Audit Warning',
+            description: warning.message || warning,
+            category: 'Security Warning',
+            severity: 'LOW',
+            osi_layer: 'APPLICATION',
+            attributes: {
+                warning_type: warning.kind || 'general'
+            }
+        };
+        findings.push(finding);
+    });
 }
 
 console.error(`DEBUG: Total findings created: ${findings.length}`);
 
-// Output the findings in SecureCodeBox format
-console.log(JSON.stringify(findings, null, 2));
+// Determine output location based on environment
+const outputFile = process.env.FINDINGS_FILE || '/home/securecodebox/findings.json';
+
+// Write findings to the expected location for SecureCodeBox
+if (outputFile === '/dev/stdout' || outputFile === '-') {
+    // Direct stdout output
+    console.log(JSON.stringify(findings, null, 2));
+} else {
+    // Write to file
+    try {
+        fs.writeFileSync(outputFile, JSON.stringify(findings, null, 2));
+        console.error(`INFO: Findings written to ${outputFile}`);
+        // Also output to stdout for debugging
+        console.log(JSON.stringify(findings, null, 2));
+    } catch (error) {
+        console.error(`ERROR: Failed to write findings to ${outputFile}: ${error.message}`);
+        // Fallback to stdout
+        console.log(JSON.stringify(findings, null, 2));
+    }
+}

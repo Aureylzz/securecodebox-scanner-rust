@@ -66,6 +66,35 @@ Built comprehensive test suite (test-full-integration.sh):
 
 All tests passed! The complete pipeline works end-to-end.
 
+### Step 8 - Helm Chart Creation
+
+Created the Helm chart structure for SecureCodeBox integration:
+
+- **Chart.yaml**: Defines metadata about the scanner
+- **values.yaml**: Configuration values (image names, resources, etc.)
+- **scan-type.yaml**: Tells SecureCodeBox how to run the scanner
+- **parser-scan-type.yaml**: Defines how to parse results
+- **_helpers.tpl**: Reusable template functions
+
+The Helm chart passed linting with only a minor suggestion about adding an icon.
+
+### Step 9 - SecureCodeBox Integration Updates
+
+Updated scanner and parser for SecureCodeBox environment:
+
+- **Scanner**: Modified to write results to `/home/securecodebox/scan-results.json` when RESULTS_FILE env var is set
+- **Parser**: Updated to read from SCAN_RESULTS_FILE env var and handle missing output directory gracefully
+- **Images**: Tagged and pushed as v0.1.1 to Docker Hub (aureylz/scb-rust-scan and aureylz/scb-rust-parser)
+
+### Step 10 - Permission Alignment
+
+Discovered permission issues during local testing:
+
+- **Issue**: Scanner (UID 1000) and parser (different UID) couldn't share files
+- **Solution**: Updated parser Dockerfile to use existing 'node' user (UID 1000) instead of creating new user
+- **Result**: Both containers now use same UID, enabling seamless file sharing in local tests
+- **Note**: This issue only affects local Docker testing; SecureCodeBox handles permissions automatically
+
 ### Future enhancements
 
 - Add cargo-deny for license compliance
@@ -102,6 +131,15 @@ Key learning: cargo-audit uses exit codes to communicate results, not just succe
 
 This is similar to grep - exit code 1 means "no matches" which is still a successful run.
 
+### SecureCodeBox Integration Architecture
+
+Learned how SecureCodeBox orchestrates scanners:
+
+- Scanner writes to specific file location (`/home/securecodebox/scan-results.json`)
+- Lurker sidecar captures output automatically
+- Parser receives results path via environment variable
+- Findings written to standardized location for SecureCodeBox to collect
+
 ## Ideas
 
 - Consider caching cargo-audit installation in a separate build stage to speed up builds
@@ -129,8 +167,22 @@ Parse results:
 Run integration tests:
 `cd tests/integration && ./test-full-integration.sh`
 
+Push to Docker Hub:
+
+```bash
+docker tag scb-rust-scan:dev aureylz/scb-rust-scan:v0.1.1
+docker push aureylz/scb-rust-scan:v0.1.1
+docker tag scb-rust-parser:dev aureylz/scb-rust-parser:v0.1.2
+docker push aureylz/scb-rust-parser:v0.1.2
+```
+
+Test Helm chart:
+`helm lint ./helm`
+
 ## Links
 
 - <https://hub.docker.com/_/rust>
 - <https://github.com/RustSec/rustsec>
 - <https://rustsec.org/advisories/RUSTSEC-2020-0071.html>
+- <https://www.securecodebox.io/docs/getting-started/installation/>
+- <https://www.securecodebox.io/docs/getting-started/first-scans/>

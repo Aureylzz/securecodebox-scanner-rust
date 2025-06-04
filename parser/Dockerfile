@@ -10,9 +10,17 @@ RUN npm install --production || true
 COPY parser.js ./
 RUN chmod +x parser.js
 
-# Create non-root user (best practices for security)
-RUN adduser -D -s /bin/sh parser
-USER parser
+# The node:20-alpine image already has a 'node' user with UID 1000
+# We'll use this existing user instead of creating a new one
+# This matches our scanner user's UID perfectly!
+
+# Create the SecureCodeBox directory and set permissions for the node user
+RUN mkdir -p /home/securecodebox && \
+    chown -R node:node /home/securecodebox && \
+    chown -R node:node /app
+
+# Switch to the existing node user (UID 1000)
+USER node
 
 # SecureCodeBox will mount the scan results and pass the path as argument
 ENTRYPOINT ["node", "/app/parser.js"]

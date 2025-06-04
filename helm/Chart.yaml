@@ -1,0 +1,17 @@
+apiVersion: v2
+name: rust-scan
+description: A Helm chart for the SecureCodeBox Rust security scanner
+type: application
+version: 0.1.0        # Chart version
+appVersion: "0.1.0"   # Scanner version
+keywords:
+  - security
+  - rust
+  - cargo-audit
+  - dependency-check
+home: https://github.com/Aureylzz/securecodebox-scanner-rust
+sources:
+  - https://github.com/Aureylzz/securecodebox-scanner-rust
+maintainers:
+  - name: aureylz
+    email: aureylz@proton.me

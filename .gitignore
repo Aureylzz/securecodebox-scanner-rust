@@ -33,7 +33,6 @@ parser-debug.log
 
 # Downloaded binaries
 kubectl
-helm
 
 # Backup files
 *.backup

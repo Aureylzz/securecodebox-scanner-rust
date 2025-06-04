@@ -1,0 +1,28 @@
+apiVersion: "execution.securecodebox.io/v1"
+kind: ParseDefinition
+metadata:
+  name: {{ include "rust-scan.fullname" . }}-parser
+  labels:
+    {{- include "rust-scan.labels" . | nindent 4 }}
+spec:
+  # Reference to the ScanType this parser handles
+  scanType: {{ include "rust-scan.fullname" . }}
+  
+  # Parser image configuration
+  image: "{{ .Values.parser.image.repository }}:{{ .Values.parser.image.tag }}"
+  imagePullPolicy: {{ .Values.parser.image.pullPolicy }}
+  
+  # How results are provided to parser
+  env:
+    - name: SCAN_RESULTS_FILE
+      value: "/home/securecodebox/scan-results.json"
+  
+  # Resource limits for parser
+  resources:
+    {{- toYaml .Values.parser.resources | nindent 4 }}
+  
+  # Parse results are written here
+  resultFile: "/home/securecodebox/findings.json"
+  
+  # Timeout for parsing
+  timeout: "120s"
