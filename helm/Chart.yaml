@@ -1,17 +1,37 @@
+# Helm Chart metadata file
+# This file defines information about the SecureCodeBox scanner package
+
 apiVersion: v2
 name: rust-scan
 description: A Helm chart for the SecureCodeBox Rust security scanner
+
+# Chart type can be 'application' or 'library'
+# Application charts are installable, library charts provide reusable templates
 type: application
-version: 0.1.0        # Chart version
-appVersion: "0.1.0"   # Scanner version
+
+# Version numbers follow semantic versioning
+version: 0.1.0        # Chart version - increment when we change the chart
+appVersion: "0.1.0"   # Scanner version - increment when we change scanner/parser code
+
+# Keywords help users find the scanner
 keywords:
   - security
   - rust
   - cargo-audit
   - dependency-check
+  - vulnerability-scanner
+  - securecodebox
+
+# Links for more information
 home: https://github.com/Aureylzz/securecodebox-scanner-rust
 sources:
   - https://github.com/Aureylzz/securecodebox-scanner-rust
+  - https://github.com/RustSec/rustsec
+
+# Maintainer information
 maintainers:
   - name: aureylz
     email: aureylz@proton.me
+
+# Optional: Add an icon URL if you have one
+# icon: https://example.com/rust-scanner-icon.png

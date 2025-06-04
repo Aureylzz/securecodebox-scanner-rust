@@ -1,20 +1,29 @@
-# We use a Node.js Alpine image to have a minimal size, create an app directory and copy the package files (mandatory for Node in my understanding)
+# Use Node.js Alpine image for minimal size and security
 FROM node:20-alpine
+
+# Set working directory for the application
 WORKDIR /app
+
+# Copy package files first for better Docker layer caching
+# This allows Docker to reuse layers if dependencies haven't changed
 COPY package*.json ./
 
-# Then, we install production dependencies, but for now, we're using only built-in Node.js modules
+# Install production dependencies
+# The '|| true' allows the build to continue even if there are no dependencies
+# Currently we only use Node.js built-in modules, so this is a no-op
 RUN npm install --production || true
 
-# We copy the JS parser script in the container and make it executable
+# Copy the parser script into the container
 COPY parser.js ./
 RUN chmod +x parser.js
 
 # The node:20-alpine image already has a 'node' user with UID 1000
-# We'll use this existing user instead of creating a new one
-# This matches our scanner user's UID perfectly!
+# We use this existing user instead of creating a new one
+# This UID matches our scanner user, which helps with local testing
+# though SecureCodeBox handles permissions differently in production
 
 # Create the SecureCodeBox directory and set permissions for the node user
+# This is where SecureCodeBox expects to find the findings
 RUN mkdir -p /home/securecodebox && \
     chown -R node:node /home/securecodebox && \
     chown -R node:node /app
@@ -23,4 +32,5 @@ RUN mkdir -p /home/securecodebox && \
 USER node
 
 # SecureCodeBox will mount the scan results and pass the path as argument
+# The parser reads from SCAN_RESULTS_FILE env var or command line argument
 ENTRYPOINT ["node", "/app/parser.js"]

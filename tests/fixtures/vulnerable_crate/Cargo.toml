@@ -1,7 +1,9 @@
 [package]
 name = "vulnerable_crate"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+# This version of the time crate has a known vulnerability (RUSTSEC-2020-0071)
+# It's used to verify our scanner correctly detects security issues
 time = "0.1"

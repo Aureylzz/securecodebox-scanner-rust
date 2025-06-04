@@ -95,6 +95,51 @@ Discovered permission issues during local testing:
 - **Result**: Both containers now use same UID, enabling seamless file sharing in local tests
 - **Note**: This issue only affects local Docker testing; SecureCodeBox handles permissions automatically
 
+### Step 11 - Kubernetes Local Testing with Kind
+
+Set up a local Kubernetes cluster using kind for testing SecureCodeBox integration:
+
+- **Created kind cluster**: Used kind v0.29.0 to create a local k8s cluster
+- **Loaded images**: Used `kind load docker-image` to make local images available in cluster
+- **Installed SecureCodeBox**: Deployed operator v4.5.0 with Helm
+- **Initial deployment**: Scanner and parser registered successfully as ScanType and ParseDefinition
+
+### Step 12 - File Permission Issue Discovery
+
+Encountered critical issue where lurker couldn't read scanner output:
+
+- **Problem**: Lurker got "permission denied" when trying to read scan results
+- **Root cause**: Scanner creates files as user 'scanner' (UID 1000) with restrictive permissions
+- **Solution**: Added `chmod 644 "$RESULTS_FILE"` in scanner.sh after writing results
+- **Lesson**: Multi-container pods require careful attention to file permissions when sharing volumes
+
+### Step 13 - ParseDefinition Naming Convention Discovery
+
+Discovered SecureCodeBox v4.5.0 has specific requirements for ParseDefinition naming:
+
+- **Problem**: "No ParseDefinition for ResultType 'json' found" error
+- **Investigation**: Tried multiple naming patterns (rust-scanner-parser, json-parser)
+- **Solution**: ParseDefinition MUST be named exactly 'json' to handle JSON results
+- **Key insight**: SecureCodeBox matches parsers by result type name, not scanner name
+
+### Step 14 - Case Sensitivity Issue
+
+Found that field values in Kubernetes CRDs are case-sensitive:
+
+- **Problem**: Helm upgrade failed with "contentType: Unsupported value: 'text'"
+- **Solution**: Changed contentType from "text" to "Text" (capital T)
+- **Lesson**: Always check exact field requirements with `kubectl explain`
+
+### Step 15 - Successful End-to-End Integration
+
+Finally achieved complete integration with all components working:
+
+- **Scanner**: Successfully detects vulnerabilities and writes results with correct permissions
+- **Lurker**: Can read results and upload to MinIO
+- **Parser Discovery**: SecureCodeBox finds parser using 'json' naming convention
+- **Parsing**: Parser transforms cargo-audit output to SecureCodeBox findings
+- **Result**: Scan progresses through Scanning → ScanCompleted → Parsing → Done
+
 ### Future enhancements
 
 - Add cargo-deny for license compliance

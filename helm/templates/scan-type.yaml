@@ -1,39 +1,74 @@
+# This file defines the ScanType - it tells SecureCodeBox how to run our scanner
 apiVersion: "execution.securecodebox.io/v1"
 kind: ScanType
 metadata:
+  # The name is generated from the Helm release name
+  # This becomes 'rust-scanner' when we install with 'helm install rust-scanner ./helm'
   name: {{ include "rust-scan.fullname" . }}
   labels:
+    # Standard Kubernetes labels for resource management
     {{- include "rust-scan.labels" . | nindent 4 }}
 spec:
+  # extractResults tells SecureCodeBox where to find scan results and their format
   extractResults:
-    # Results are in JSON format
-    type: json
-    # Location where scanner writes results (managed by lurker)
+    # The scanner writes results to this specific location
+    # The lurker sidecar will read from here
     location: "/home/securecodebox/scan-results.json"
+    
+    # CRITICAL: This must match the ParseDefinition name in our version of SecureCodeBox
+    # SecureCodeBox v4.5.0 looks for a ParseDefinition named 'json' to handle this type
+    type: json
   
+  # jobTemplate defines the Kubernetes Job that runs the scan
   jobTemplate:
     spec:
       template:
         spec:
+          # Don't restart on failure - scan results should be deterministic
           restartPolicy: OnFailure
+          
+          # Define the scanner container
           containers:
+            # Container name is derived from the chart name
+            # This becomes 'rust-scan' (not 'rust-scanner' - important for log access!)
             - name: rust-scan
+              
+              # Scanner image configuration from values.yaml
               image: "{{ .Values.scanner.image.repository }}:{{ .Values.scanner.image.tag }}"
               imagePullPolicy: {{ .Values.scanner.image.pullPolicy }}
+              
+              # Command to execute - our scanner script
               command:
                 - /usr/local/bin/scanner.sh
+              
+              # Resource limits prevent runaway scans from consuming too many resources
               resources:
                 {{- toYaml .Values.scanner.resources | nindent 16 }}
+              
+              # Security context for defense in depth
               securityContext:
+                # Don't allow privilege escalation
                 allowPrivilegeEscalation: false
+                # File system is writable (needed for cargo operations)
                 readOnlyRootFilesystem: false
+                # Run as non-root user for security
                 runAsNonRoot: true
+                # Run as our scanner user (UID 1000)
                 runAsUser: 1000
+              
+              # Environment variables can be passed from values.yaml
               env:
                 {{- toYaml .Values.scannerJob.env | nindent 16 }}
+              
+              # Volume mounts for the scanner
               volumeMounts:
+                # Mount the scan workspace where code will be analyzed
                 - name: scan-workspace
                   mountPath: /scan
+          
+          # Define volumes available to the pod
           volumes:
+            # Empty directory for scan workspace
+            # Users will mount their code here via Scan resource
             - name: scan-workspace
               emptyDir: {}

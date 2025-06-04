@@ -1,0 +1,59 @@
+# Example SecureCodeBox Scan for Rust Projects
+# This file shows how to create a scan that analyzes a Rust project for vulnerabilities
+
+apiVersion: execution.securecodebox.io/v1
+kind: Scan
+metadata:
+  # Give your scan a descriptive name
+  name: rust-vulnerability-scan
+  # Optional: add labels for organization
+  labels:
+    app: my-rust-app
+    team: security
+spec:
+  # This must match the name of your installed ScanType
+  # If you installed with 'helm install rust-scanner ./helm', use 'rust-scanner'
+  scanType: rust-scanner
+  
+  # Optional: Add parameters to pass to the scanner
+  # Currently our scanner doesn't use parameters, but this shows how you would add them
+  # parameters:
+  #   - "--verbose"
+  #   - "--ignore=RUSTSEC-2020-0001"
+  
+  # Volumes define where your Rust code comes from
+  volumes:
+    # Option 1: Mount code from a host path (common in CI/CD)
+    - name: project-code
+      hostPath:
+        # IMPORTANT: Update this to point to your actual Rust project
+        # The project MUST contain a Cargo.lock file for cargo-audit to work
+        path: /path/to/your/rust/project
+        type: Directory
+    
+    # Option 2: Use a PersistentVolumeClaim (better for production)
+    # - name: project-code
+    #   persistentVolumeClaim:
+    #     claimName: my-rust-project-pvc
+    
+    # Option 3: Use a ConfigMap (good for testing with small projects)
+    # - name: project-code
+    #   configMap:
+    #     name: rust-project-files
+    #     items:
+    #       - key: Cargo.toml
+    #         path: Cargo.toml
+    #       - key: Cargo.lock
+    #         path: Cargo.lock
+    
+    # Option 4: Use an emptyDir and init container to clone from git
+    # - name: project-code
+    #   emptyDir: {}
+  
+  # Volume mounts specify where to mount the volumes in the scanner container
+  volumeMounts:
+    - name: project-code
+      # The scanner expects the project to be mounted at /scan
+      mountPath: /scan
+      # Optional: mount as read-only for extra security
+      # readOnly: true

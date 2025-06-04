@@ -1,31 +1,45 @@
-# Default values for rust-scan
+# Default values for the Rust security scanner
+# This file provides configuration options that can be overridden during installation
 
 # Scanner image configuration
 scanner:
   image:
-    repository: aureylz/scb-rust-scan
+    # Repository without registry prefix for local development
+    # In production, this would be something like: myregistry.io/security/rust-scan
+    repository: scb-rust-scan
+    # Tag should match the built image version
     tag: latest
+    # Pull policy for development - use IfNotPresent or Always for production
     pullPolicy: IfNotPresent
   
   # Resource limits for the scanner pod
+  # These prevent runaway scans from consuming too many cluster resources
   resources:
     limits:
+      # Memory limit prevents OOM kills on large projects
       memory: "512Mi"
+      # CPU limit prevents scanning from monopolizing nodes
       cpu: "1000m"
     requests:
+      # Minimum resources needed for scanner to function
       memory: "256Mi"
       cpu: "250m"
   
   # Timeout for scan execution (in seconds)
+  # Cargo-audit might need time to download vulnerability database
   timeout: 300
 
 # Parser image configuration  
 parser:
   image:
-    repository: aureylz/scb-rust-parser
-    tag: v0.1.2  # Changed from 'latest'
+    # Repository for parser image
+    repository: scb-rust-parser
+    # Tag should match the built parser version
+    tag: latest
+    # Pull policy - same considerations as scanner
     pullPolicy: IfNotPresent
   
+  # Parser needs fewer resources than scanner
   resources:
     limits:
       memory: "256Mi"
@@ -37,13 +51,19 @@ parser:
 # Additional scanner settings
 scannerJob:
   # Environment variables passed to scanner
+  # Can be used to configure cargo-audit behavior
   env: []
+  # Example:
+  # - name: CARGO_AUDIT_DENY_WARNINGS
+  #   value: "true"
   
-  # Suspend job after completion
+  # Suspend job after completion (useful for debugging)
   suspend: false
   
   # Number of retries on failure
+  # Set to 0 for no retries in production
   backoffLimit: 3
   
   # TTL after job finishes (seconds)
+  # Null means jobs are kept indefinitely
   ttlSecondsAfterFinished: null
