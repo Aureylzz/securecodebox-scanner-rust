@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
- * SecureCodeBox Parser for Rust Security Scanner
+ * SecureCodeBox Enhanced Parser for Rust Multi-Tool Scanner
  * 
- * This script transforms cargo-audit JSON output into SecureCodeBox findings format.
- * It extracts vulnerability information and maps it to the standardized finding structure
- * that SecureCodeBox expects.
+ * This script transforms output from multiple Rust security tools into SecureCodeBox findings:
+ * - cargo-audit: Security vulnerabilities
+ * - cargo-deny: License compliance and dependency issues
+ * - cargo-geiger: Unsafe code usage
+ * - clippy: Code quality issues
  */
 
 const fs = require('fs');
@@ -13,7 +15,6 @@ const https = require('https');
 const { URL } = require('url');
 
 // Parse command line arguments OR use environment variable
-// SecureCodeBox can provide the path either way
 const scanResultsLocation = process.argv[2] || process.env.SCAN_RESULTS_FILE;
 
 if (!scanResultsLocation) {
@@ -54,7 +55,6 @@ async function downloadFromUrl(urlString) {
                 reject(error);
             });
             
-            // Set a timeout to prevent hanging
             request.setTimeout(30000, () => {
                 request.destroy();
                 reject(new Error('Download timeout'));
@@ -76,179 +76,293 @@ function isUrl(string) {
     }
 }
 
-// Main async function to handle both files and URLs
+// Process cargo-audit results
+function processCargoAudit(auditData, findings) {
+    if (!auditData || auditData.warning) {
+        console.error('DEBUG: Skipping cargo-audit - no data or warning present');
+        return;
+    }
+    
+    if (auditData.vulnerabilities && auditData.vulnerabilities.list) {
+        console.error(`DEBUG: Processing ${auditData.vulnerabilities.list.length} vulnerabilities from cargo-audit`);
+        
+        auditData.vulnerabilities.list.forEach((vuln) => {
+            const advisory = vuln.advisory;
+            if (!advisory) return;
+            
+            let severity = 'MEDIUM';
+            if (advisory.cvss) {
+                if (advisory.cvss.includes('/A:H') || advisory.cvss.includes('/C:H') || advisory.cvss.includes('/I:H')) {
+                    severity = 'HIGH';
+                } else if (advisory.cvss.includes('/A:L') || advisory.cvss.includes('/C:L') || advisory.cvss.includes('/I:L')) {
+                    severity = 'LOW';
+                }
+            }
+            
+            const finding = {
+                name: `${advisory.id}: ${advisory.title}`,
+                description: advisory.description || 'No description provided',
+                category: 'Vulnerable Dependency',
+                severity: severity,
+                osi_layer: 'APPLICATION',
+                scanner: 'cargo-audit',
+                attributes: {
+                    rustsec_id: advisory.id,
+                    package: vuln.package?.name || 'Unknown',
+                    installed_version: vuln.package?.version || 'Unknown',
+                    date: advisory.date,
+                    url: advisory.url || `https://rustsec.org/advisories/${advisory.id}`,
+                    cve: Array.isArray(advisory.aliases) 
+                        ? advisory.aliases.filter(alias => alias.startsWith('CVE')).join(', ') 
+                        : null,
+                    cvss: advisory.cvss || null,
+                    patched_versions: vuln.versions?.patched?.join(', ') || null,
+                    unaffected_versions: vuln.versions?.unaffected?.join(', ') || null
+                },
+                location: vuln.package ? `${vuln.package.name}@${vuln.package.version}` : null
+            };
+            
+            // Clean up null values
+            Object.keys(finding.attributes).forEach(key => {
+                if (finding.attributes[key] === null || finding.attributes[key] === undefined) {
+                    delete finding.attributes[key];
+                }
+            });
+            
+            findings.push(finding);
+        });
+    }
+}
+
+// Process cargo-deny results
+function processCargoGeny(denyData, findings) {
+    if (!denyData || denyData.warning) {
+        console.error('DEBUG: Skipping cargo-deny - no data or warning present');
+        return;
+    }
+    
+    // Handle JSON format output
+    if (Array.isArray(denyData)) {
+        console.error(`DEBUG: Processing ${denyData.length} issues from cargo-deny`);
+        
+        denyData.forEach((issue) => {
+            // Map cargo-deny severity to SecureCodeBox severity
+            let severity = 'LOW';
+            if (issue.severity === 'error') severity = 'HIGH';
+            else if (issue.severity === 'warning') severity = 'MEDIUM';
+            
+            const finding = {
+                name: `cargo-deny: ${issue.type || 'Issue'} - ${issue.message || 'Unknown issue'}`,
+                description: issue.message || 'No description provided',
+                category: mapDenyCategory(issue.type),
+                severity: severity,
+                osi_layer: 'APPLICATION',
+                scanner: 'cargo-deny',
+                attributes: {
+                    check_type: issue.type,
+                    severity: issue.severity,
+                    code: issue.code
+                }
+            };
+            
+            if (issue.labels) {
+                finding.location = issue.labels.map(l => l.span.file).join(', ');
+            }
+            
+            findings.push(finding);
+        });
+    } else if (denyData.output) {
+        // Handle text format - create a single finding
+        const textOutput = denyData.output;
+        const hasErrors = textOutput.includes('error:');
+        const hasWarnings = textOutput.includes('warning:');
+        
+        if (hasErrors || hasWarnings) {
+            findings.push({
+                name: 'cargo-deny: License and dependency check issues found',
+                description: 'cargo-deny detected issues. Run cargo-deny locally for details.',
+                category: 'Dependency Compliance',
+                severity: hasErrors ? 'HIGH' : 'MEDIUM',
+                osi_layer: 'APPLICATION',
+                scanner: 'cargo-deny',
+                attributes: {
+                    has_errors: hasErrors,
+                    has_warnings: hasWarnings,
+                    summary: textOutput.substring(0, 500) + '...'
+                }
+            });
+        }
+    }
+}
+
+// Helper function to map cargo-deny issue types to categories
+function mapDenyCategory(type) {
+    const categoryMap = {
+        'banned': 'Banned Dependency',
+        'denied': 'Denied Dependency',
+        'license': 'License Compliance',
+        'duplicate': 'Duplicate Dependencies',
+        'source': 'Untrusted Source',
+        'advisory': 'Security Advisory'
+    };
+    return categoryMap[type] || 'Dependency Issue';
+}
+
+// Process cargo-geiger results
+function processCargoGeiger(geigerData, findings) {
+    if (!geigerData || geigerData.warning) {
+        console.error('DEBUG: Skipping cargo-geiger - no data or warning present');
+        return;
+    }
+    
+    const unsafeUsed = geigerData.unsafe_code_used || 0;
+    const unsafeTotal = geigerData.unsafe_code_total || 0;
+    
+    console.error(`DEBUG: cargo-geiger found ${unsafeUsed}/${unsafeTotal} unsafe code usages`);
+    
+    // Only create a finding if unsafe code is actually used
+    if (unsafeUsed > 0) {
+        const severity = unsafeUsed > 50 ? 'HIGH' : (unsafeUsed > 10 ? 'MEDIUM' : 'LOW');
+        
+        findings.push({
+            name: `Unsafe Code Usage Detected: ${unsafeUsed} occurrences`,
+            description: `This project uses unsafe Rust code in ${unsafeUsed} places. Unsafe code bypasses Rust's memory safety guarantees and should be carefully reviewed.`,
+            category: 'Code Safety',
+            severity: severity,
+            osi_layer: 'APPLICATION',
+            scanner: 'cargo-geiger',
+            attributes: {
+                unsafe_code_used: unsafeUsed,
+                unsafe_code_total: unsafeTotal,
+                unsafe_percentage: unsafeTotal > 0 ? Math.round((unsafeUsed / unsafeTotal) * 100) : 0
+            }
+        });
+    }
+}
+
+// Process clippy results
+function processClippy(clippyData, findings) {
+    if (!clippyData || clippyData.warning) {
+        console.error('DEBUG: Skipping clippy - no data or warning present');
+        return;
+    }
+    
+    if (clippyData.messages && Array.isArray(clippyData.messages)) {
+        console.error(`DEBUG: Processing ${clippyData.messages.length} messages from clippy`);
+        
+        // Group clippy warnings by lint name
+        const lintGroups = {};
+        
+        clippyData.messages.forEach((msg) => {
+            if (msg.message && msg.message.code) {
+                const lintName = msg.message.code.code;
+                if (!lintGroups[lintName]) {
+                    lintGroups[lintName] = {
+                        name: lintName,
+                        level: msg.message.level,
+                        count: 0,
+                        locations: [],
+                        firstMessage: msg.message.message
+                    };
+                }
+                
+                lintGroups[lintName].count++;
+                if (msg.message.spans && msg.message.spans.length > 0) {
+                    const span = msg.message.spans[0];
+                    lintGroups[lintName].locations.push(`${span.file_name}:${span.line_start}`);
+                }
+            }
+        });
+        
+        // Create findings for each lint type
+        Object.values(lintGroups).forEach((lint) => {
+            // Map clippy levels to SecureCodeBox severity
+            let severity = 'LOW';
+            if (lint.level === 'error') severity = 'HIGH';
+            else if (lint.level === 'warning' && lint.count > 5) severity = 'MEDIUM';
+            
+            const finding = {
+                name: `Clippy: ${lint.name} (${lint.count} occurrence${lint.count > 1 ? 's' : ''})`,
+                description: lint.firstMessage || `Clippy lint ${lint.name} triggered ${lint.count} times`,
+                category: 'Code Quality',
+                severity: severity,
+                osi_layer: 'APPLICATION',
+                scanner: 'clippy',
+                attributes: {
+                    lint_name: lint.name,
+                    lint_level: lint.level,
+                    occurrence_count: lint.count,
+                    sample_locations: lint.locations.slice(0, 5).join(', ')
+                }
+            };
+            
+            if (lint.locations.length > 0) {
+                finding.location = lint.locations[0];
+            }
+            
+            findings.push(finding);
+        });
+    }
+}
+
+// Main async function
 async function main() {
     let rawData;
     
     try {
         if (isUrl(scanResultsLocation)) {
-            // It's a URL - download the content
             console.error('DEBUG: Detected URL input, downloading scan results...');
             rawData = await downloadFromUrl(scanResultsLocation);
         } else {
-            // It's a file path - read it directly
             console.error('DEBUG: Detected file path input, reading from disk...');
             rawData = fs.readFileSync(scanResultsLocation, 'utf8');
-            console.error(`DEBUG: Read ${rawData.length} bytes from file`);
         }
         
-        // Parse the JSON content
         const scanResults = JSON.parse(rawData);
-        console.error(`DEBUG: Successfully parsed JSON`);
+        console.error(`DEBUG: Successfully parsed JSON for scan type: ${scanResults.scan_type}`);
         
-        // Transform cargo-audit findings to SecureCodeBox format
         const findings = [];
         
-        console.error(`DEBUG: Checking for vulnerabilities...`);
-        console.error(`DEBUG: scanResults.vulnerabilities exists: ${!!scanResults.vulnerabilities}`);
-        console.error(`DEBUG: scanResults.vulnerabilities.count: ${scanResults.vulnerabilities?.count}`);
-        
-        // Check if we have vulnerabilities in the scan results
-        if (scanResults.vulnerabilities && scanResults.vulnerabilities.list && Array.isArray(scanResults.vulnerabilities.list)) {
-            console.error(`DEBUG: Processing ${scanResults.vulnerabilities.list.length} vulnerabilities`);
-            
-            scanResults.vulnerabilities.list.forEach((vuln, index) => {
-                console.error(`DEBUG: Processing vulnerability ${index + 1}`);
-                
-                // Extract the advisory information - this contains all the vulnerability details
-                const advisory = vuln.advisory;
-                if (!advisory) {
-                    console.error(`DEBUG: Skipping vulnerability ${index + 1} - no advisory found`);
-                    return;
-                }
-                
-                console.error(`DEBUG: Advisory ID: ${advisory.id}`);
-                console.error(`DEBUG: Advisory title: ${advisory.title}`);
-                
-                // Determine severity from CVSS score
-                // CVSS format: "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
-                // We check for High impact values in Confidentiality, Integrity, or Availability
-                let severity = 'MEDIUM'; // Default severity
-                if (advisory.cvss) {
-                    // If any of the CIA triad has High impact, consider it HIGH severity
-                    if (advisory.cvss.includes('/A:H') || advisory.cvss.includes('/C:H') || advisory.cvss.includes('/I:H')) {
-                        severity = 'HIGH';
-                    } else if (advisory.cvss.includes('/A:L') || advisory.cvss.includes('/C:L') || advisory.cvss.includes('/I:L')) {
-                        severity = 'LOW';
-                    }
-                    console.error(`DEBUG: Determined severity: ${severity}`);
-                }
-                
-                // Build the finding object in SecureCodeBox format
-                const finding = {
-                    // Combine the advisory ID and title for a descriptive name
-                    name: `${advisory.id}: ${advisory.title}`,
-                    
-                    // Use the full description if available
-                    description: advisory.description || 'No description provided',
-                    
-                    // Category helps group similar findings
-                    category: 'Vulnerable Dependency',
-                    
-                    // Severity determined from CVSS score
-                    severity: severity,
-                    
-                    // OSI layer - application layer for dependency vulnerabilities
-                    osi_layer: 'APPLICATION',
-                    
-                    // Additional attributes provide detailed information
-                    attributes: {
-                        rustsec_id: advisory.id,
-                        package: vuln.package?.name || 'Unknown',
-                        installed_version: vuln.package?.version || 'Unknown',
-                        date: advisory.date,
-                        url: advisory.url || `https://rustsec.org/advisories/${advisory.id}`,
-                        
-                        // Include CVE if available (filter for CVE format)
-                        cve: Array.isArray(advisory.aliases) 
-                            ? advisory.aliases.filter(alias => alias.startsWith('CVE')).join(', ') 
-                            : null,
-                        
-                        // Include full CVSS string for reference
-                        cvss: advisory.cvss || null,
-                        
-                        // Categories help understand the type of vulnerability
-                        categories: Array.isArray(advisory.categories) 
-                            ? advisory.categories.join(', ') 
-                            : null,
-                        
-                        // Keywords provide additional context
-                        keywords: Array.isArray(advisory.keywords) 
-                            ? advisory.keywords.join(', ') 
-                            : null,
-                        
-                        // Version information helps with remediation
-                        patched_versions: vuln.versions?.patched?.join(', ') || null,
-                        unaffected_versions: vuln.versions?.unaffected?.join(', ') || null
-                    },
-                    
-                    // Location helps identify where the vulnerability exists
-                    location: vuln.package ? `${vuln.package.name}@${vuln.package.version}` : null
-                };
-                
-                // Clean up null values from attributes to keep output tidy
-                Object.keys(finding.attributes).forEach(key => {
-                    if (finding.attributes[key] === null || finding.attributes[key] === undefined) {
-                        delete finding.attributes[key];
-                    }
-                });
-                
-                console.error(`DEBUG: Created finding: ${finding.name}`);
-                findings.push(finding);
-            });
-        } else {
-            console.error('DEBUG: No vulnerabilities.list found in scan results');
+        // Process results from each tool
+        if (scanResults.cargo_audit) {
+            processCargoAudit(scanResults.cargo_audit, findings);
         }
         
-        // Handle warnings as separate findings (if any)
-        // Warnings might indicate issues with the scan itself
-        if (scanResults.warnings && Array.isArray(scanResults.warnings)) {
-            console.error(`DEBUG: Processing ${scanResults.warnings.length} warnings`);
-            scanResults.warnings.forEach((warning) => {
-                const finding = {
-                    name: 'Cargo Audit Warning',
-                    description: warning.message || warning,
-                    category: 'Security Warning',
-                    severity: 'LOW',
-                    osi_layer: 'APPLICATION',
-                    attributes: {
-                        warning_type: warning.kind || 'general'
-                    }
-                };
-                findings.push(finding);
-            });
+        if (scanResults.cargo_deny) {
+            processCargoGeny(scanResults.cargo_deny, findings);
+        }
+        
+        if (scanResults.cargo_geiger) {
+            processCargoGeiger(scanResults.cargo_geiger, findings);
+        }
+        
+        if (scanResults.clippy) {
+            processClippy(scanResults.clippy, findings);
         }
         
         console.error(`DEBUG: Total findings created: ${findings.length}`);
         
-        // Determine output location based on environment
-        // SecureCodeBox may specify where to write findings
+        // Determine output location
         const outputFile = process.env.FINDINGS_FILE || '/home/securecodebox/findings.json';
         
-        // Write findings to the expected location for SecureCodeBox
+        // Write findings
         if (outputFile === '/dev/stdout' || outputFile === '-') {
-            // Direct stdout output for testing
             console.log(JSON.stringify(findings, null, 2));
         } else {
-            // Write to file for SecureCodeBox
             try {
                 fs.writeFileSync(outputFile, JSON.stringify(findings, null, 2));
                 console.error(`INFO: Findings written to ${outputFile}`);
-                // Also output to stdout for debugging
                 console.log(JSON.stringify(findings, null, 2));
             } catch (error) {
                 console.error(`ERROR: Failed to write findings to ${outputFile}: ${error.message}`);
-                // Fallback to stdout if file write fails
                 console.log(JSON.stringify(findings, null, 2));
             }
         }
         
     } catch (error) {
         console.error(`Error processing scan results: ${error.message}`);
-        // Output empty findings array for SecureCodeBox
-        // This ensures the parser doesn't crash the entire scan process
         console.log(JSON.stringify([]));
-        process.exit(0); // Exit successfully even if parsing fails
+        process.exit(0);
     }
 }
 

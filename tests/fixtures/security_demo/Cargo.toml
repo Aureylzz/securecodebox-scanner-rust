@@ -1,0 +1,13 @@
+[package]
+name = "security-demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Using old versions with known vulnerabilities
+chrono = "=0.4.19"  # Has RUSTSEC-2020-0159 vulnerability
+regex = "=1.5.4"    # Has RUSTSEC-2022-0013 vulnerability
+tokio = "=1.8.0"    # Old version with vulnerabilities
+
+# This will trigger cargo-deny for unmaintained crates
+net2 = "0.2.37"     # Deprecated/unmaintained
