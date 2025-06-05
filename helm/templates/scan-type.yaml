@@ -19,6 +19,10 @@ spec:
     # SecureCodeBox v4.5.0 looks for a ParseDefinition named 'json' to handle this type
     type: json
   
+    # Add this line whiche seems to be mandatory up to the documentation
+    # How did it work without ? That'a kind of mistery !
+    parameters: []
+
   # jobTemplate defines the Kubernetes Job that runs the scan
   jobTemplate:
     spec:
