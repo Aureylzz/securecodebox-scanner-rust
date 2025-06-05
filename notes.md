@@ -140,6 +140,16 @@ Finally achieved complete integration with all components working:
 - **Parsing**: Parser transforms cargo-audit output to SecureCodeBox findings
 - **Result**: Scan progresses through Scanning → ScanCompleted → Parsing → Done
 
+### Step 16 - Production-Ready Parser with URL Support
+
+Successfully updated parser to handle both file paths and URLs:
+
+- **Added URL detection**: `isUrl()` function to differentiate between files and URLs
+- **Implemented download functionality**: `downloadFromUrl()` for HTTP/HTTPS support
+- **Tested both modes**: Verified parser works with local files AND web server URLs
+- **Parser v0.1.3**: Now fully supports MinIO integration without any production limitations
+- **Key achievement**: Removed the last barrier to production deployment!
+
 ### Future enhancements
 
 - Add cargo-deny for license compliance
@@ -217,8 +227,8 @@ Push to Docker Hub:
 ```bash
 docker tag scb-rust-scan:dev aureylz/scb-rust-scan:v0.1.1
 docker push aureylz/scb-rust-scan:v0.1.1
-docker tag scb-rust-parser:dev aureylz/scb-rust-parser:v0.1.2
-docker push aureylz/scb-rust-parser:v0.1.2
+docker tag scb-rust-parser:dev aureylz/scb-rust-parser:v0.1.3
+docker push aureylz/scb-rust-parser:v0.1.3
 ```
 
 Test Helm chart:
