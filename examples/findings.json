@@ -1,0 +1,159 @@
+[
+  {
+    "name": "RUSTSEC-2020-0159: Potential segfault in `localtime_r` invocations",
+    "description": "### Impact\n\nUnix-like operating systems may segfault due to dereferencing a dangling pointer in specific circumstances. This requires an environment variable to be set in a different thread than the affected functions. This may occur without the user's knowledge, notably in a third-party library.\n\n### Workarounds\n\nNo workarounds are known.\n\n### References\n\n- [time-rs/time#293](https://github.com/time-rs/time/issues/293)",
+    "category": "Vulnerable Dependency",
+    "severity": "MEDIUM",
+    "osi_layer": "APPLICATION",
+    "scanner": "cargo-audit",
+    "attributes": {
+      "rustsec_id": "RUSTSEC-2020-0159",
+      "package": "chrono",
+      "installed_version": "0.4.19",
+      "date": "2020-11-10",
+      "url": "https://github.com/chronotope/chrono/issues/499",
+      "cve": "",
+      "patched_versions": ">=0.4.20"
+    },
+    "location": "chrono@0.4.19"
+  },
+  {
+    "name": "RUSTSEC-2022-0013: Regexes with large repetitions on empty sub-expressions take a very long time to parse",
+    "description": "The Rust Security Response WG was notified that the `regex` crate did not\nproperly limit the complexity of the regular expressions (regex) it parses. An\nattacker could use this security issue to perform a denial of service, by\nsending a specially crafted regex to a service accepting untrusted regexes. No\nknown vulnerability is present when parsing untrusted input with trusted\nregexes.\n\nThis issue has been assigned CVE-2022-24713. The severity of this vulnerability\nis \"high\" when the `regex` crate is used to parse untrusted regexes. Other uses\nof the `regex` crate are not affected by this vulnerability.\n\n## Overview\n\nThe `regex` crate features built-in mitigations to prevent denial of service\nattacks caused by untrusted regexes, or untrusted input matched by trusted\nregexes. Those (tunable) mitigations already provide sane defaults to prevent\nattacks. This guarantee is documented and it's considered part of the crate's\nAPI.\n\nUnfortunately a bug was discovered in the mitigations designed to prevent\nuntrusted regexes to take an arbitrary amount of time during parsing, and it's\npossible to craft regexes that bypass such mitigations. This makes it possible\nto perform denial of service attacks by sending specially crafted regexes to\nservices accepting user-controlled, untrusted regexes.\n\n## Affected versions\n\nAll versions of the `regex` crate before or equal to 1.5.4 are affected by this\nissue. The fix is include starting from  `regex` 1.5.5.\n\n## Mitigations\n\nWe recommend everyone accepting user-controlled regexes to upgrade immediately\nto the latest version of the `regex` crate.\n\nUnfortunately there is no fixed set of problematic regexes, as there are\npractically infinite regexes that could be crafted to exploit this\nvulnerability. Because of this, we do not recommend denying known problematic\nregexes.\n\n## Acknowledgements\n\nWe want to thank Addison Crump for responsibly disclosing this to us according\nto the [Rust security policy][1], and for helping review the fix.\n\nWe also want to thank Andrew Gallant for developing the fix, and Pietro Albini\nfor coordinating the disclosure and writing this advisory.\n\n[1]: https://www.rust-lang.org/policies/security",
+    "category": "Vulnerable Dependency",
+    "severity": "HIGH",
+    "osi_layer": "APPLICATION",
+    "scanner": "cargo-audit",
+    "attributes": {
+      "rustsec_id": "RUSTSEC-2022-0013",
+      "package": "regex",
+      "installed_version": "1.5.4",
+      "date": "2022-03-08",
+      "url": "https://groups.google.com/g/rustlang-security-announcements/c/NcNNL1Jq7Yw",
+      "cve": "CVE-2022-24713",
+      "cvss": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "patched_versions": ">=1.5.5"
+    },
+    "location": "regex@1.5.4"
+  },
+  {
+    "name": "RUSTSEC-2020-0071: Potential segfault in the time crate",
+    "description": "### Impact\n\nThe affected functions set environment variables without synchronization. On Unix-like operating systems, this can crash in multithreaded programs. Programs may segfault due to dereferencing a dangling pointer if an environment variable is read in a different thread than the affected functions. This may occur without the user's knowledge, notably in the Rust standard library or third-party libraries.\n\nThe affected functions from time 0.2.7 through 0.2.22 are:\n\n- `time::UtcOffset::local_offset_at`\n- `time::UtcOffset::try_local_offset_at`\n- `time::UtcOffset::current_local_offset`\n- `time::UtcOffset::try_current_local_offset`\n- `time::OffsetDateTime::now_local`\n- `time::OffsetDateTime::try_now_local`\n\nThe affected functions in time 0.1 (all versions) are:\n\n- `time::at_utc`\n- `time::at`\n- `time::now`\n- `time::tzset`\n\nNon-Unix targets (including Windows and wasm) are unaffected.\n\n### Patches\n\nPending a proper fix, the internal method that determines the local offset has been modified to always return `None` on the affected operating systems. This has the effect of returning an `Err` on the `try_*` methods and `UTC` on the non-`try_*` methods.\n\nUsers and library authors with time in their dependency tree should perform `cargo update`, which will pull in the updated, unaffected code.\n\nUsers of time 0.1 do not have a patch and should upgrade to an unaffected version: time 0.2.23 or greater or the 0.3 series.\n\n### Workarounds\n\nA possible workaround for crates affected through the transitive dependency in `chrono`, is to avoid using the default `oldtime` feature dependency of the `chrono` crate by disabling its `default-features` and manually specifying the required features instead.\n\n#### Examples:\n\n`Cargo.toml`:  \n\n```toml\nchrono = { version = \"0.4\", default-features = false, features = [\"serde\"] }\n```\n\n```toml\nchrono = { version = \"0.4.22\", default-features = false, features = [\"clock\"] }\n```\n\nCommandline:  \n\n```bash\ncargo add chrono --no-default-features -F clock\n```\n\nSources:  \n - [chronotope/chrono#602 (comment)](https://github.com/chronotope/chrono/issues/602#issuecomment-1242149249)  \n - [vityafx/serde-aux#21](https://github.com/vityafx/serde-aux/issues/21)",
+    "category": "Vulnerable Dependency",
+    "severity": "HIGH",
+    "osi_layer": "APPLICATION",
+    "scanner": "cargo-audit",
+    "attributes": {
+      "rustsec_id": "RUSTSEC-2020-0071",
+      "package": "time",
+      "installed_version": "0.1.45",
+      "date": "2020-11-18",
+      "url": "https://github.com/time-rs/time/issues/293",
+      "cve": "CVE-2020-26235",
+      "cvss": "CVSS:3.1/AV:L/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H",
+      "patched_versions": ">=0.2.23",
+      "unaffected_versions": "=0.2.0, =0.2.1, =0.2.2, =0.2.3, =0.2.4, =0.2.5, =0.2.6"
+    },
+    "location": "time@0.1.45"
+  },
+  {
+    "name": "RUSTSEC-2021-0072: Task dropped in wrong thread when aborting `LocalSet` task",
+    "description": "When aborting a task with `JoinHandle::abort`, the future is dropped in the\nthread calling abort if the task is not currently being executed. This is\nincorrect for tasks spawned on a `LocalSet`.\n\nThis can easily result in race conditions as many projects use `Rc` or `RefCell`\nin their Tokio tasks for better performance.\n\nSee [tokio#3929][issue] for more details.\n\n[issue]: https://github.com/tokio-rs/tokio/issues/3929",
+    "category": "Vulnerable Dependency",
+    "severity": "MEDIUM",
+    "osi_layer": "APPLICATION",
+    "scanner": "cargo-audit",
+    "attributes": {
+      "rustsec_id": "RUSTSEC-2021-0072",
+      "package": "tokio",
+      "installed_version": "1.8.0",
+      "date": "2021-07-07",
+      "url": "https://github.com/tokio-rs/tokio/issues/3929",
+      "cve": "CVE-2021-38191",
+      "patched_versions": ">=1.5.1, <1.6.0, >=1.6.3, <1.7.0, >=1.7.2, <1.8.0, >=1.8.1",
+      "unaffected_versions": "<0.3.0"
+    },
+    "location": "tokio@1.8.0"
+  },
+  {
+    "name": "RUSTSEC-2021-0124: Data race when sending and receiving after closing a `oneshot` channel",
+    "description": "If a `tokio::sync::oneshot` channel is closed (via the\n[`oneshot::Receiver::close`] method), a data race may occur if the\n`oneshot::Sender::send` method is called while the corresponding\n`oneshot::Receiver` is `await`ed or calling `try_recv`.\n\nWhen these methods are called concurrently on a closed channel, the two halves\nof the channel can concurrently access a shared memory location, resulting in a\ndata race. This has been observed to [cause memory corruption][corruption].\n\nNote that the race only occurs when **both** halves of the channel are used\nafter the `Receiver` half has called `close`. Code where `close` is not used, or where the\n`Receiver` is not `await`ed and `try_recv` is not called after calling `close`,\nis not affected.\n\nSee [tokio#4225][issue] for more details.\n\n[corruption]: https://github.com/tokio-rs/tokio/issues/4225#issuecomment-967434847\n[issue]: https://github.com/tokio-rs/tokio/issues/4225\n[`oneshot::Receiver::close`]: https://docs.rs/tokio/1.14.0/tokio/sync/oneshot/struct.Receiver.html#method.close",
+    "category": "Vulnerable Dependency",
+    "severity": "MEDIUM",
+    "osi_layer": "APPLICATION",
+    "scanner": "cargo-audit",
+    "attributes": {
+      "rustsec_id": "RUSTSEC-2021-0124",
+      "package": "tokio",
+      "installed_version": "1.8.0",
+      "date": "2021-11-16",
+      "url": "https://github.com/tokio-rs/tokio/issues/4225",
+      "cve": "CVE-2021-45710",
+      "patched_versions": ">=1.8.4, <1.9.0, >=1.13.1",
+      "unaffected_versions": "<0.1.14"
+    },
+    "location": "tokio@1.8.0"
+  },
+  {
+    "name": "RUSTSEC-2023-0001: reject_remote_clients Configuration corruption",
+    "description": "On Windows, configuring a named pipe server with [pipe_mode] will force [ServerOptions]::[reject_remote_clients] as `false`.\n\nThis drops any intended explicit configuration for the [reject_remote_clients] that may have been set as `true` previously.\n\nThe default setting of [reject_remote_clients] is normally `true` meaning the default is also overridden as `false`.\n\n## Workarounds\n\nEnsure that [pipe_mode] is set first after initializing a [ServerOptions]. For example:\n\n```rust\nlet mut opts = ServerOptions::new();\nopts.pipe_mode(PipeMode::Message);\nopts.reject_remote_clients(true);\n```\n\n[ServerOptions]: https://docs.rs/tokio/latest/tokio/net/windows/named_pipe/struct.ServerOptions.html\n[pipe_mode]: https://docs.rs/tokio/latest/tokio/net/windows/named_pipe/struct.ServerOptions.html#method.pipe_mode\n[reject_remote_clients]: https://docs.rs/tokio/latest/tokio/net/windows/named_pipe/struct.ServerOptions.html#method.reject_remote_clients",
+    "category": "Vulnerable Dependency",
+    "severity": "MEDIUM",
+    "osi_layer": "APPLICATION",
+    "scanner": "cargo-audit",
+    "attributes": {
+      "rustsec_id": "RUSTSEC-2023-0001",
+      "package": "tokio",
+      "installed_version": "1.8.0",
+      "date": "2023-01-04",
+      "url": "https://github.com/tokio-rs/tokio/security/advisories/GHSA-7rrj-xr53-82p7",
+      "cve": "CVE-2023-22466",
+      "patched_versions": ">=1.18.4, <1.19.0, >=1.20.3, <1.21.0, >=1.23.1",
+      "unaffected_versions": "<1.7.0"
+    },
+    "location": "tokio@1.8.0"
+  },
+  {
+    "name": "Unsafe Code Usage Detected: 49 occurrences",
+    "description": "This project uses unsafe Rust code in 49 places. Unsafe code bypasses Rust's memory safety guarantees and should be carefully reviewed.",
+    "category": "Code Safety",
+    "severity": "MEDIUM",
+    "osi_layer": "APPLICATION",
+    "scanner": "cargo-geiger",
+    "attributes": {
+      "unsafe_code_used": 49,
+      "unsafe_code_total": 341,
+      "unsafe_percentage": 14
+    }
+  },
+  {
+    "name": "Clippy: dead_code (4 occurrences)",
+    "description": "function `dangerous_function` is never used",
+    "category": "Code Quality",
+    "severity": "LOW",
+    "osi_layer": "APPLICATION",
+    "scanner": "clippy",
+    "attributes": {
+      "lint_name": "dead_code",
+      "lint_level": "warning",
+      "occurrence_count": 4,
+      "sample_locations": "src/main.rs:27, src/main.rs:27, src/main.rs:32, src/main.rs:32"
+    },
+    "location": "src/main.rs:27"
+  },
+  {
+    "name": "Clippy: clippy::missing_safety_doc (2 occurrences)",
+    "description": "docs for unsafe trait missing `# Safety` section",
+    "category": "Code Quality",
+    "severity": "LOW",
+    "osi_layer": "APPLICATION",
+    "scanner": "clippy",
+    "attributes": {
+      "lint_name": "clippy::missing_safety_doc",
+      "lint_level": "warning",
+      "occurrence_count": 2,
+      "sample_locations": "src/main.rs:32, src/main.rs:32"
+    },
+    "location": "src/main.rs:32"
+  }
+]

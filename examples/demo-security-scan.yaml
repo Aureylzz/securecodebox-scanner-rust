@@ -1,0 +1,23 @@
+apiVersion: execution.securecodebox.io/v1
+kind: Scan
+metadata:
+  name: rust-security-demo
+spec:
+  scanType: rust-scanner
+  volumes:
+    - name: scan-target
+      configMap:
+        name: security-demo-project
+  volumeMounts:
+    - name: scan-target
+      mountPath: /scan/Cargo.toml
+      subPath: Cargo.toml
+    - name: scan-target
+      mountPath: /scan/Cargo.lock
+      subPath: Cargo.lock
+    - name: scan-target
+      mountPath: /scan/src/main.rs
+      subPath: main.rs
+    - name: scan-target
+      mountPath: /scan/deny.toml
+      subPath: deny.toml

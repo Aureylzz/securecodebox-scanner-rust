@@ -52,3 +52,14 @@ Thumbs.db
 # Node modules (in case parser grows)
 node_modules/
 npm-debug.log
+# Test outputs
+test-*.json
+test-*.log
+*-scan.json
+*-findings.json
+scan-output.json
+parser-debug.log
+
+# Temporary files
+*.tmp
+deny.toml
